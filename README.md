@@ -1,0 +1,202 @@
+# 📰 News CLI
+
+An AI-powered terminal news assistant that lets you search for news, read articles, fact-check claims, and have intelligent conversations—all from your command line.
+
+![Python](https://img.shields.io/badge/python-3.13%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+## ✨ Features
+
+### Core Features
+- **🔍 Smart News Search** — Natural language search with automatic date parsing ("last year AI news" → searches 2024)
+- **📖 Robust Article Reading** — Multi-method scraping with 6 fallback strategies including browser-based extraction
+- **🤖 AI Summaries** — Context-aware summaries powered by local LLM (Ollama)
+- **💬 Conversational** — Chat naturally with context-aware responses
+- **✅ Fact-Checking** — Verify claims against trusted sources (Snopes, PolitiFact, FactCheck.org)
+
+### User Experience
+- **📊 Morning Briefing** — Geo-located dashboard with top news on startup
+- **⌨️ Autocomplete** — Tab completion for all slash commands
+- **🔧 Configurable** — Adjust article limits, choose your LLM model
+- **🌍 Location-Aware** — Automatic country detection for localized news
+- **📝 Typo Correction** — LLM-powered input sanitization
+
+## 📋 Prerequisites
+
+- **Python 3.13+**
+- **[Ollama](https://ollama.com/download)** — Local LLM runtime
+- **[uv](https://docs.astral.sh/uv/)** — Fast Python package manager (recommended)
+
+## 🚀 Installation
+
+### Quick Install (Recommended)
+
+**Linux / macOS:**
+```bash
+curl -sSL https://raw.githubusercontent.com/ikenai-lab/news-cli/main/install.sh | bash
+```
+
+**Windows (PowerShell as Admin):**
+```powershell
+irm https://raw.githubusercontent.com/ikenai-lab/news-cli/main/install.ps1 | iex
+```
+
+The install scripts will:
+- ✅ Check for and install `uv` (Python package manager)
+- ✅ Check for and install `Ollama` (Local LLM runtime)
+- ✅ Clone the repository
+- ✅ Install Python dependencies
+- ✅ Pull the LLM model (~2GB)
+
+### Manual Installation
+
+```bash
+# 1. Install prerequisites
+# Linux/macOS:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows (using winget):
+winget install astral-sh.uv
+winget install Ollama.Ollama
+
+# 2. Clone and setup
+git clone https://github.com/ikenai-lab/news-cli.git
+cd news-cli
+uv sync
+
+# 3. Optional: Install browser for JS-heavy sites
+uv run playwright install chromium
+
+# 4. Pull the LLM model
+ollama pull llama3.2:3b
+```
+
+## 🎯 Usage
+
+```bash
+# Run with defaults
+uv run news-cli
+
+# Specify model and article limit
+uv run news-cli --model llama3.2:3b --limit 10
+```
+
+### CLI Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model` | `llama3.2:3b` | Ollama model to use |
+| `--limit` | `5` | Articles per search (1-20) |
+
+## ⌨️ Commands
+
+Type `/` to see all available commands with autocomplete.
+
+### Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/read <id>` | Read and summarize article #id |
+| `/open <id>` | Open article in browser (for blocked sites) |
+| `/save <id>` | Save article to markdown file |
+| `/save <filename>` | Save conversation history |
+| `/analyze <id>` | AI analysis for bias, tone, facts |
+| `/fact-check <id>` | Verify claims against fact-check sites |
+| `/similar <id>` | Find related news from different sources |
+| `/more-source <id>` | Find same story from other publishers |
+| `/limit <n>` | Set articles per search (1-20) |
+| `/briefing` | Refresh the morning briefing |
+| `/quit` or `/exit` | Exit the application |
+
+### Natural Language
+
+Just type naturally! The AI understands:
+- `"latest AI news"` → Search
+- `"what happened with OpenAI last week"` → Search with date filter
+- `"read the techcrunch article"` → Reads matching article
+- `"give me article 3"` → Reads article #3
+
+## 🌅 Morning Briefing
+
+On startup, you'll see a personalized dashboard:
+
+```
+📰 Morning Briefing (Location: India)
+
+┏━━━━━━━━━━━━ India Headlines ━━━━━━━━━━━━┓
+┃ # │ Date       │ Source     │ Title     ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │ 2025-12-28 │ ndtv.com   │ ...       │
+...
+
+📰 12 articles loaded. Use /read <#> to read any article.
+```
+
+## 🔍 Fact-Checking
+
+Verify claims in any article:
+
+```
+/fact-check 3
+
+┏━━━━━━━━━━━━━━ Fact-Check Results ━━━━━━━━━━━━━━┓
+┃ # │ Claim                │ Sources │ Top Source ┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 1 │ "AI will replace..." │ 3       │ Snopes...  │
+...
+```
+
+## 🏗️ Project Structure
+
+```
+news-cli/
+├── src/
+│   ├── main.py           # CLI entry point
+│   ├── agent.py          # NewsAgent with LLM integration
+│   ├── startup.py        # Ollama checks + geolocation
+│   ├── tools/
+│   │   ├── search.py     # DuckDuckGo search with time filters
+│   │   ├── scraper.py    # Multi-method article scraper
+│   │   └── fact_check.py # Claim verification tool
+│   └── ui/
+│       ├── render.py     # Rich UI components
+│       └── completer.py  # Slash command autocomplete
+├── pyproject.toml
+└── README.md
+```
+
+## 📦 Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `ollama` | Local LLM client |
+| `ddgs` | DuckDuckGo search |
+| `trafilatura` | Primary article extraction |
+| `readability-lxml` | Fallback content extraction |
+| `playwright` | Browser-based scraping for JS sites |
+| `rich` | Terminal UI components |
+| `typer` | CLI framework |
+| `httpx` | HTTP client |
+| `prompt-toolkit` | Command autocomplete |
+
+## 🔧 Scraping Strategy
+
+The scraper uses 6 fallback methods for maximum compatibility:
+
+1. **httpx** — Fast HTTP with browser headers
+2. **trafilatura fetch** — Alternative HTTP method
+3. **trafilatura extract** — Content extraction with heuristics
+4. **readability-lxml** — Firefox Reader Mode algorithm
+5. **Playwright** — Headless browser for JavaScript sites
+6. **Regex fallback** — Last resort body extraction
+
+For sites that block all scraping (like MSN), use `/open <id>` to view in browser.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
