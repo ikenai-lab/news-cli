@@ -4,6 +4,9 @@ An AI-powered terminal news assistant that lets you search for news, read articl
 
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/Status-Under_Development-orange)
+
+![News CLI Demo](demo.gif)
 
 ## ✨ Features
 
