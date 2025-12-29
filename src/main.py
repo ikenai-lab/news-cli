@@ -12,7 +12,7 @@ def main(
     limit: int = typer.Option(5, min=1, max=20, help="Number of articles per search (1-20)")
 ):
     """
-    Antigravity News CLI - Your AI-powered news assistant.
+    News CLI - Your AI-powered news assistant.
     """
     # 1. Startup Checks
     console.print("[bold yellow]Initializing...[/bold yellow]")
@@ -171,6 +171,9 @@ def main(
             break
         except Exception as e:
             console.print(f"[red]An error occurred: {e}[/red]")
+def entry_point():
+    """ Wrapper to invoke typer properly"""
+    typer.run(main)
 
 if __name__ == "__main__":
     app()
