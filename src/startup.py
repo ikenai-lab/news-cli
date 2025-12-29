@@ -26,7 +26,7 @@ def get_user_country() -> str:
         console.print(f"[dim]Geo-location failed: {e}[/dim]")
         return "Global"
 
-def check_and_start_ollama() -> bool:
+def check_and_start_ollama(target_model : str = "llama3.2:3b") -> bool:
     """
     Ensures Ollama is installed, running, and the required model is available.
     Returns True if ready, exits or returns False otherwise.
@@ -68,7 +68,6 @@ def check_and_start_ollama() -> bool:
         sys.exit(1)
 
     # 3. Check and Pull Model
-    target_model = "llama3.2:3b"
     try:
         models = ollama.list()
         # ollama.list returns a dict with 'models' key which is a list of objects
