@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-news-cli = "src.main:app"
+news-cli = "src.main:entry_point"
 
 [dependency-groups]
 dev = [
