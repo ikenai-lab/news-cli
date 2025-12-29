@@ -239,12 +239,17 @@ Which article number (1-{len(self.search_cache)}) is the user referring to? Repl
         except:
             return "I couldn't determine which article you're referring to. Please specify the article number."
 
-    def _handle_search_intent(self, user_text: str) -> str:
+    def _handle_search_intent(self, user_text: str, skip_date_extraction: bool = False) -> str:
         """
         Handles SEARCH intent.
+        skip_date_extraction: If True, bypasses LLM date processing (used for /similar, /more-source)
         """
-        # Extract date context from query using LLM
-        search_query, timelimit = self._extract_date_context(user_text)
+        if skip_date_extraction:
+            search_query = user_text
+            timelimit = None
+        else:
+            # Extract date context from query using LLM
+            search_query, timelimit = self._extract_date_context(user_text)
         
         console.print(f"[blue]Searching for: {search_query}[/blue]")
         if timelimit:
@@ -453,9 +458,9 @@ Respond with ONLY the category name (SEARCH, READ, or CHAT). Nothing else."""
             clean_title = title.split(" - ")[0].split(" | ")[0]
             # Search with exclusion
             query = f'{clean_title} -site:{domain}'
-            return self._handle_search_intent(query)
+            return self._handle_search_intent(query, skip_date_extraction=True)
         except:
-            return self._handle_search_intent(f"news similar to {title}")
+            return self._handle_search_intent(f"news similar to {title}", skip_date_extraction=True)
         
     def _find_more_sources(self, arg: str) -> str:
         if not arg.isdigit() or int(arg) not in self.search_cache: return "Invalid ID."
@@ -472,9 +477,9 @@ Respond with ONLY the category name (SEARCH, READ, or CHAT). Nothing else."""
             domain = urlparse(url).netloc.replace("www.", "")
             # Search for exact headline from different sources
             query = f'"{clean_title}" -site:{domain}'
-            return self._handle_search_intent(query)
+            return self._handle_search_intent(query, skip_date_extraction=True)
         except:
-            return self._handle_search_intent(f'"{clean_title}"')
+            return self._handle_search_intent(f'"{clean_title}"', skip_date_extraction=True)
 
     def _fact_check_article(self, arg: str) -> str:
         """

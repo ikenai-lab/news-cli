@@ -15,6 +15,7 @@ class TestScrapeArticle:
         with patch('src.tools.scraper.httpx.Client') as mock_client:
             with patch('src.tools.scraper.trafilatura.extract') as mock_extract:
                 mock_response = MagicMock()
+                mock_response.status_code = 200  # Explicitly set status code
                 mock_response.text = "<html><body><p>Test content</p></body></html>"
                 mock_response.raise_for_status = MagicMock()
                 
