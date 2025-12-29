@@ -15,8 +15,8 @@ def main(
     News CLI - Your AI-powered news assistant.
     """
     # 1. Startup Checks
-    console.print("[bold yellow]Initializing...[/bold yellow]")
-    if not check_and_start_ollama():
+    console.print(f"[bold yellow]Initializing with model: {model}...[/bold yellow]")
+    if not check_and_start_ollama(target_model=model):
         console.print("[bold red]Startup failed. Exiting.[/bold red]")
         raise typer.Exit(code=1)
     
