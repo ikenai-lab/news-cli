@@ -44,6 +44,11 @@ curl -sSL https://raw.githubusercontent.com/ikenai-lab/news-cli/main/install.sh 
 irm https://raw.githubusercontent.com/ikenai-lab/news-cli/main/install.ps1 | iex
 ```
 
+**Global Install via uv (if you have uv installed):**
+```bash
+uv tool install git+https://github.com/ikenai-lab/news-cli.git
+```
+
 The install scripts will:
 - ✅ Check for and install `uv` (Python package manager)
 - ✅ Check for and install `Ollama` (Local LLM runtime)
@@ -175,24 +180,41 @@ news-cli/
 |---------|---------|
 | `ollama` | Local LLM client |
 | `ddgs` | DuckDuckGo search |
-| `trafilatura` | Primary article extraction |
+| `crawl4ai` | Stealth browser scraping with anti-bot bypass |
+| `cloudscraper` | Cloudflare bypass |
+| `trafilatura` | Article content extraction |
 | `readability-lxml` | Fallback content extraction |
-| `playwright` | Browser-based scraping for JS sites |
 | `rich` | Terminal UI components |
 | `typer` | CLI framework |
 | `httpx` | HTTP client |
 | `prompt-toolkit` | Command autocomplete |
 
-## 🔧 Scraping Strategy
+## 🔧 Scraping Architecture
 
-The scraper uses 6 fallback methods for maximum compatibility:
+The scraper uses a multi-layered approach with 6 fallback methods:
 
-1. **httpx** — Fast HTTP with browser headers
-2. **trafilatura fetch** — Alternative HTTP method
-3. **trafilatura extract** — Content extraction with heuristics
-4. **readability-lxml** — Firefox Reader Mode algorithm
-5. **Playwright** — Headless browser for JavaScript sites
-6. **Regex fallback** — Last resort body extraction
+```
+┌─────────────────────────────────────────────────────────┐
+│ 1. Crawl4AI (Stealth Browser)                           │
+│    ↳ Uses playwright-stealth, anti-bot bypass           │
+│    ↳ Returns clean markdown with PruningContentFilter   │
+│    ↓ (if fails)                                         │
+│ 2. Cloudscraper                                         │
+│    ↳ Cloudflare bypass, drop-in requests replacement    │
+│    ↓ (if fails)                                         │
+│ 3. Jina Reader (r.jina.ai)                              │
+│    ↳ Free proxy, returns markdown, hides your IP       │
+│    ↓ (if fails)                                         │
+│ 4. Archive.org (Wayback Machine)                        │
+│    ↳ Cached versions for blocked sites                  │
+│    ↓ (if fails)                                         │
+│ 5. Direct Fetch (httpx + trafilatura)                   │
+│    ↳ Standard HTTP with article extraction              │
+│    ↓ (if fails)                                         │
+│ 6. Google Cache                                         │
+│    ↳ Last resort cached version                         │
+└─────────────────────────────────────────────────────────┘
+```
 
 For sites that block all scraping (like MSN), use `/open <id>` to view in browser.
 
