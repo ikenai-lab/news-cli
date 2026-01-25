@@ -3,14 +3,13 @@ name = "news-cli"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "cloudscraper>=1.2.71",
-    "crawl4ai>=0.7.8",
-    "ddgs>=9.10.0",
+    "ddgs>=1.0.0",
     "httpx>=0.28.1",
+    "nodriver>=0.1",
     "ollama>=0.6.1",
-    "playwright>=1.57.0",
     "prompt-toolkit>=3.0.52",
     "readability-lxml>=0.8.4.1",
     "rich>=14.2.0",
@@ -25,6 +24,7 @@ news-cli = "src.main:entry_point"
 dev = [
     "pytest>=9.0.2",
     "pytest-mock>=3.15.1",
+    "pytest-asyncio>=0.23.0",
 ]
 
 [build-system]

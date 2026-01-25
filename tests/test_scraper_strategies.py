@@ -1,135 +1,93 @@
 """
-Tests for Jina and Archive scraping strategies in src/tools/scraper.py
+Tests for src/tools/scraper.py matching the new flow:
+CloudScraper -> Nodriver -> Archive -> Direct
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
+import asyncio
 
-class TestScraperStrategies:
-    """Tests for individual scraping strategies."""
+@pytest.mark.asyncio
+class TestScrapeArticleFlow:
+    """Tests the main scrape_article fallback chain."""
     
-    def test_scrape_with_jina_success(self):
-        """Should utilize Jina Reader proxy."""
-        from src.tools.scraper import scrape_with_jina
+    @patch('src.tools.scraper.scrape_with_cloudscraper_sync')
+    async def test_cloudscraper_priority(self, mock_cloud):
+        """Should return Cloudscraper result first if available."""
+        from src.tools.scraper import scrape_article
         
-        with patch('src.tools.scraper.httpx.Client') as mock_client:
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_response.text = "# Markdown Content\n\nThis is content from Jina. It needs to be longer than 100 characters to pass the validation check in the scraper function. So I am adding more text here to ensure it passes."
-            
-            mock_client_instance = MagicMock()
-            mock_client_instance.__enter__.return_value.get.return_value = mock_response
-            mock_client.return_value = mock_client_instance
-            
-            result = scrape_with_jina("http://example.com")
-            
-            # Check URL construction
-            mock_client_instance.__enter__.return_value.get.assert_called_with("https://r.jina.ai/http://example.com")
-            assert "This is content from Jina" in result
-
-    def test_scrape_with_jina_failure(self):
-        """Should return None on Jina failure."""
-        from src.tools.scraper import scrape_with_jina
+        mock_cloud.return_value = "Cloudscraper Content"
         
-        with patch('src.tools.scraper.httpx.Client') as mock_client:
-            mock_response = MagicMock()
-            mock_response.status_code = 500
+        with patch('src.tools.scraper.scrape_with_nodriver', new_callable=AsyncMock) as mock_nodriver:
+            result = await scrape_article("http://example.com")
             
-            mock_client_instance = MagicMock()
-            mock_client_instance.__enter__.return_value.get.return_value = mock_response
-            mock_client.return_value = mock_client_instance
-            
-            result = scrape_with_jina("http://example.com")
-            
-            assert result is None
+            assert result == "Cloudscraper Content"
+            mock_nodriver.assert_not_called()
 
-    def test_scrape_with_archive_success(self):
-        """Should utilize Archive.org."""
-        from src.tools.scraper import scrape_with_archive
+    @patch('src.tools.scraper.scrape_with_cloudscraper_sync')
+    async def test_nodriver_fallback(self, mock_cloud):
+        """Should fall back to Nodriver if Cloudscraper fails."""
+        from src.tools.scraper import scrape_article
         
-        with patch('src.tools.scraper.httpx.Client') as mock_client:
-            with patch('src.tools.scraper._extract_content') as mock_extract:
-                mock_response = MagicMock()
-                mock_response.status_code = 200
-                mock_response.text = "<html>Archive Content</html>"
-                
-                mock_client_instance = MagicMock()
-                mock_client_instance.__enter__.return_value.get.return_value = mock_response
-                mock_client.return_value = mock_client_instance
-                
-                mock_extract.return_value = "Extracted Archive Content"
-                
-                result = scrape_with_archive("http://example.com")
-                
-                # Check URL construction
-                mock_client_instance.__enter__.return_value.get.assert_called_with("https://web.archive.org/web/http://example.com")
-                assert result == "Extracted Archive Content"
-
-    def test_scrape_with_google_cache_redirect_stub(self):
-        """Should return None if Google Cache returns a redirect stub."""
-        from src.tools.scraper import scrape_with_google_cache
+        mock_cloud.return_value = None
         
-        with patch('src.tools.scraper.httpx.Client') as mock_client:
-            with patch('src.tools.scraper._extract_content') as mock_extract:
-                mock_response = MagicMock()
-                mock_response.status_code = 200
-                mock_response.text = "<html>Please click here if you are not redirected within a few seconds.</html>"
-                
-                mock_client_instance = MagicMock()
-                mock_client_instance.__enter__.return_value.get.return_value = mock_response
-                mock_client.return_value = mock_client_instance
-                
-                # The extractor would return the text of the stub
-                mock_extract.return_value = "Please click here if you are not redirected within a few seconds."
-                
-                result = scrape_with_google_cache("http://example.com")
-                
-                assert result is None
+        with patch('src.tools.scraper.scrape_with_nodriver', new_callable=AsyncMock) as mock_nodriver:
+            mock_nodriver.return_value = "Nodriver Content"
+            
+            result = await scrape_article("http://example.com")
+            
+            assert result == "Nodriver Content"
+            mock_cloud.assert_called_once()
+            mock_nodriver.assert_called_once()
 
+    @patch('src.tools.scraper.scrape_with_cloudscraper_sync')
+    @patch('src.tools.scraper.scrape_with_nodriver', new_callable=AsyncMock)
+    @patch('src.tools.scraper.scrape_with_archive', new_callable=AsyncMock)
+    async def test_archive_fallback(self, mock_archive, mock_nodriver, mock_cloud):
+        """Should fall back to Archive.org if Nodriver fails."""
+        from src.tools.scraper import scrape_article
+        
+        mock_cloud.return_value = None
+        mock_nodriver.return_value = None
+        mock_archive.return_value = "Archive Content"
+        
+        result = await scrape_article("http://example.com")
+        
+        assert result == "Archive Content"
 
-class TestScraperFallbackFlow:
-    """Tests the full fallback chain."""
+@pytest.mark.asyncio
+class TestScrapeWithNodriver:
+    """Tests for the actual nodriver implementation logic."""
     
-    def test_scrape_article_prioritizes_crawl4ai(self):
-        """Should return Crawl4AI result first if available."""
-        from src.tools.scraper import scrape_article
+    async def test_scrape_with_nodriver_success(self):
+        """Should start browser, get content, and extract text."""
+        from src.tools.scraper import scrape_with_nodriver
         
-        with patch('src.tools.scraper.scrape_with_crawl4ai') as mock_crawl4ai:
-            mock_crawl4ai.return_value = "Crawl4AI Content"
+        with patch('src.tools.scraper._extract_content') as mock_extract:
+            mock_extract.return_value = "Extracted Content"
             
-            with patch('src.tools.scraper.scrape_with_cloudscraper') as mock_cs:
-                result = scrape_article("http://example.com")
+            # Mock nodriver module
+            with patch.dict('sys.modules', {'nodriver': MagicMock()}):
+                import nodriver
                 
-                assert result == "Crawl4AI Content"
-                mock_cs.assert_not_called()
-
-    def test_scrape_article_falls_back_to_cloudscraper(self):
-        """Should fall back to Cloudscraper if Crawl4AI fails."""
-        from src.tools.scraper import scrape_article
-        
-        with patch('src.tools.scraper.scrape_with_crawl4ai') as mock_crawl4ai:
-            mock_crawl4ai.return_value = None
-            
-            with patch('src.tools.scraper.scrape_with_cloudscraper') as mock_cs:
-                mock_cs.return_value = "Cloudscraper Content"
+                # Mock browser and tab
+                mock_browser = MagicMock()
+                mock_tab = AsyncMock()
                 
-                result = scrape_article("http://example.com")
+                # Configure start to return mock browser
+                mock_start = AsyncMock(return_value=mock_browser)
+                nodriver.start = mock_start
                 
-                assert result == "Cloudscraper Content"
-
-    def test_scrape_article_falls_back_to_jina(self):
-        """Should fall back to Jina if Crawl4AI and Cloudscraper fail."""
-        from src.tools.scraper import scrape_article
-        
-        with patch('src.tools.scraper.scrape_with_crawl4ai') as mock_crawl4ai:
-            mock_crawl4ai.return_value = None
-            
-            with patch('src.tools.scraper.scrape_with_cloudscraper') as mock_cs:
-                mock_cs.return_value = None
+                # Configure browser.get to return mock tab
+                mock_browser.get = AsyncMock(return_value=mock_tab)
                 
-                with patch('src.tools.scraper.scrape_with_jina') as mock_jina:
-                    mock_jina.return_value = "Jina Content"
-                    
-                    result = scrape_article("http://example.com")
-                    
-                    assert result == "Jina Content"
-
+                # Configure tab.get_content
+                mock_tab.get_content.return_value = "<html>Content</html>"
+                
+                # We need to ensure tab.sleep is mocked/awaited 
+                mock_tab.sleep = AsyncMock()
+                
+                result = await scrape_with_nodriver("http://example.com")
+                
+                assert result == "Extracted Content"
+                mock_browser.stop.assert_called_once()
+                mock_tab.sleep.assert_called_once()

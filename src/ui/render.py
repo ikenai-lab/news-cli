@@ -27,7 +27,12 @@ def print_search_results(results: list[dict]):
         if not date:
             date = "Unknown"
             
-        table.add_row(str(i), date, source, res.get('title', 'No Title'))
+        table.add_row(
+            res.get('id', str(i)), # Use ID if available, else index
+            date, 
+            source, 
+            res.get('title', 'No Title')
+        )
 
     console.print(table)
 

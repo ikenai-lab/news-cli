@@ -1,23 +1,13 @@
 """
-Fact-checking tool for verifying claims in news articles.
+Fact-checking tool for verifying claims in news articles. Async.
 """
 from ddgs import DDGS
 from rich.console import Console
+import asyncio
 
 console = Console()
 
-
-def verify_claim(claim: str, max_sources: int = 5) -> dict:
-    """
-    Searches fact-checking sites and general web to verify a claim.
-    
-    Args:
-        claim: The claim to verify
-        max_sources: Maximum number of sources to return
-        
-    Returns:
-        dict with 'sources' list and 'summary'
-    """
+def _verify_claim_sync(claim: str, max_sources: int) -> dict:
     ddgs = DDGS()
     
     # Search fact-checking sites specifically
@@ -28,28 +18,30 @@ def verify_claim(claim: str, max_sources: int = 5) -> dict:
     # Search 1: Fact-checking sites
     try:
         query = f"{claim} {fact_check_sites}"
-        results = ddgs.text(query, max_results=max_sources)
-        for res in results:
-            sources.append({
-                "title": res.get("title", ""),
-                "url": res.get("href", ""),
-                "snippet": res.get("body", ""),
-                "type": "fact-check"
-            })
+        results = list(ddgs.text(query, max_results=max_sources))
+        if results:
+            for res in results:
+                sources.append({
+                    "title": res.get("title", ""),
+                    "url": res.get("href", ""),
+                    "snippet": res.get("body", ""),
+                    "type": "fact-check"
+                })
     except Exception as e:
         console.print(f"[dim]Fact-check search error: {e}[/dim]")
     
     # Search 2: General verification (if not enough fact-check results)
     if len(sources) < max_sources:
         try:
-            results = ddgs.text(f'"{claim}" verify OR fact OR true OR false', max_results=max_sources - len(sources))
-            for res in results:
-                sources.append({
-                    "title": res.get("title", ""),
-                    "url": res.get("href", ""),
-                    "snippet": res.get("body", ""),
-                    "type": "general"
-                })
+            results = list(ddgs.text(f'"{claim}" verify OR fact OR true OR false', max_results=max_sources - len(sources)))
+            if results:
+                for res in results:
+                    sources.append({
+                        "title": res.get("title", ""),
+                        "url": res.get("href", ""),
+                        "snippet": res.get("body", ""),
+                        "type": "general"
+                    })
         except:
             pass
     
@@ -58,6 +50,12 @@ def verify_claim(claim: str, max_sources: int = 5) -> dict:
         "sources": sources,
         "source_count": len(sources)
     }
+
+async def verify_claim(claim: str, max_sources: int = 5) -> dict:
+    """
+    Searches fact-checking sites and general web to verify a claim.
+    """
+    return await asyncio.to_thread(_verify_claim_sync, claim, max_sources)
 
 
 def extract_claims_prompt(article_content: str) -> str:

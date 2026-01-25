@@ -30,11 +30,12 @@ class TestSlashCommandCompleter:
         assert "/open" in completer.COMMANDS
     
     def test_commands_include_save(self):
-        """Should include /save command."""
+        """Should include save commands."""
         from src.ui.completer import SlashCommandCompleter
         
         completer = SlashCommandCompleter()
-        assert "/save" in completer.COMMANDS
+        assert "/save-article" in completer.COMMANDS
+        assert "/save-session" in completer.COMMANDS
     
     def test_commands_include_analyze(self):
         """Should include /analyze command."""
@@ -57,12 +58,6 @@ class TestSlashCommandCompleter:
         completer = SlashCommandCompleter()
         assert "/similar" in completer.COMMANDS
     
-    def test_commands_include_more_source(self):
-        """Should include /more-source command."""
-        from src.ui.completer import SlashCommandCompleter
-        
-        completer = SlashCommandCompleter()
-        assert "/more-source" in completer.COMMANDS
     
     def test_commands_include_limit(self):
         """Should include /limit command."""

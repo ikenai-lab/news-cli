@@ -9,3 +9,10 @@ wheels/
 # Virtual environments
 .venv
 ignore/
+
+demo-script.sh
+demo.cast
+record-demo.sh
+vhs.tar.gz
+demo.tape
+.agent/

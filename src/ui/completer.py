@@ -10,11 +10,11 @@ class SlashCommandCompleter(Completer):
     COMMANDS = {
         "/read": "Read full content of article #ID",
         "/open": "Open article #ID in your default browser",
-        "/save": "Save article #ID to file OR save session to filename",
+        "/save-article": "Save article #ID to Markdown file",
+        "/save-session": "Save current chat history to a JSON file",
         "/analyze": "AI analysis of article (bias, facts, tone)",
         "/fact-check": "Verify claims in article #ID against fact-check sites",
         "/similar": "Search for related news to article #ID",
-        "/more-source": "Find same story from other publishers",
         "/limit": "Set articles per search (1-20). Usage: /limit 10",
         "/briefing": "Show the morning briefing again",
         "/quit": "Exit the application",

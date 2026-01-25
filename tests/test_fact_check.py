@@ -2,13 +2,13 @@
 Tests for src/tools/fact_check.py
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
-
+@pytest.mark.asyncio
 class TestVerifyClaim:
     """Tests for the verify_claim function."""
     
-    def test_verify_claim_returns_dict(self):
+    async def test_verify_claim_returns_dict(self):
         """Should return a dictionary with sources."""
         from src.tools.fact_check import verify_claim
         
@@ -17,29 +17,33 @@ class TestVerifyClaim:
             mock_instance.text.return_value = [
                 {"title": "Fact Check", "href": "http://snopes.com/test", "body": "This is true"}
             ]
+            mock_instance.__enter__.return_value = mock_instance
+            mock_instance.__exit__.return_value = None
             mock_ddgs.return_value = mock_instance
             
-            result = verify_claim("test claim")
+            result = await verify_claim("test claim")
             
             assert isinstance(result, dict)
             assert "claim" in result
             assert "sources" in result
             assert "source_count" in result
     
-    def test_verify_claim_includes_claim_text(self):
+    async def test_verify_claim_includes_claim_text(self):
         """Should include the original claim in result."""
         from src.tools.fact_check import verify_claim
         
         with patch('src.tools.fact_check.DDGS') as mock_ddgs:
             mock_instance = MagicMock()
             mock_instance.text.return_value = []
+            mock_instance.__enter__.return_value = mock_instance
+            mock_instance.__exit__.return_value = None
             mock_ddgs.return_value = mock_instance
             
-            result = verify_claim("specific test claim")
+            result = await verify_claim("specific test claim")
             
             assert result["claim"] == "specific test claim"
     
-    def test_verify_claim_max_sources(self):
+    async def test_verify_claim_max_sources(self):
         """Should respect max_sources parameter."""
         from src.tools.fact_check import verify_claim
         
@@ -49,23 +53,27 @@ class TestVerifyClaim:
                 {"title": f"Result {i}", "href": f"http://test{i}.com", "body": "Test"}
                 for i in range(10)
             ]
+            mock_instance.__enter__.return_value = mock_instance
+            mock_instance.__exit__.return_value = None
             mock_ddgs.return_value = mock_instance
             
-            result = verify_claim("test", max_sources=3)
+            result = await verify_claim("test", max_sources=3)
             
             # Should limit sources
             assert isinstance(result["source_count"], int)
     
-    def test_verify_claim_handles_exception(self):
+    async def test_verify_claim_handles_exception(self):
         """Should handle exceptions gracefully."""
         from src.tools.fact_check import verify_claim
         
         with patch('src.tools.fact_check.DDGS') as mock_ddgs:
             mock_instance = MagicMock()
             mock_instance.text.side_effect = Exception("Network error")
+            mock_instance.__enter__.return_value = mock_instance
+            mock_instance.__exit__.return_value = None
             mock_ddgs.return_value = mock_instance
             
-            result = verify_claim("test")
+            result = await verify_claim("test")
             
             assert isinstance(result, dict)
             assert result["source_count"] >= 0

@@ -16,8 +16,7 @@ def get_user_country() -> str:
     Detects user's country using ip-api.com. Returns 'Global' on failure.
     """
     try:
-        import httpx
-        resp = httpx.get("http://ip-api.com/json/", timeout=5.0)  # Increased timeout
+        resp = httpx.get("http://ip-api.com/json/", timeout=5.0)
         data = resp.json()
         country = data.get("country", "Global")
         console.print(f"[dim]Location detected: {country}[/dim]")
@@ -31,12 +30,10 @@ def check_and_start_ollama(target_model : str = "llama3.2:3b") -> bool:
     Ensures Ollama is installed, running, and the required model is available.
     Returns True if ready, exits or returns False otherwise.
     """
-    # 1. Check Install
     if shutil.which("ollama") is None:
         console.print(Panel("Error: 'ollama' binary not found in PATH.\nPlease install Ollama from https://ollama.com/download", title="Ollama Missing", style="bold red"))
         sys.exit(1)
 
-    # 2. Check Server
     server_url = "http://localhost:11434"
     server_ready = False
     
@@ -67,7 +64,6 @@ def check_and_start_ollama(target_model : str = "llama3.2:3b") -> bool:
         console.print("[bold red]Timed out waiting for Ollama server to start.[/bold red]")
         sys.exit(1)
 
-    # 3. Check and Pull Model
     try:
         models = ollama.list()
         # ollama.list returns a dict with 'models' key which is a list of objects
