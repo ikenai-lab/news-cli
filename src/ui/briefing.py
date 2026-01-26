@@ -19,7 +19,7 @@ async def render_briefing(categories: list[tuple[str, str]], article_limit: int 
     """
     total_articles = []
     
-    tasks = [search_news(query, max_results=article_limit, timelimit='w') for _, query in categories]
+    tasks = [search_news(query, max_results=article_limit, timelimit='d') for _, query in categories]
     
     with console.status("[bold cyan]Fetching Morning Briefing...[/bold cyan]", spinner="dots"):
         results_list = await asyncio.gather(*tasks)

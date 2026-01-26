@@ -44,7 +44,6 @@ class NewsAgent:
                  return await self._scrape_and_summarize(article_id)
         
         intent = await self._classify_intent(user_text)
-        console.print(f"[dim]DEBUG: Intent={intent}[/dim]")
         
         if intent == "READ":
             return await self._handle_read_intent(user_text)
@@ -274,10 +273,16 @@ class NewsAgent:
          # Fallback to LLM
          try:
              resp = await self.client.chat(model=self.model, messages=[
-                 {"role": "system", "content": "Classify intent: SEARCH, READ, or CHAT. If user wants news/info -> SEARCH. If user wants to read specific article mentioned -> READ. Else CHAT."},
+                 {"role": "system", "content": "You are a classifier. Output ONLY one word: SEARCH, READ, or CHAT. Rules:\n- Requesting news/info -> SEARCH\n- Reading specific article -> READ\n- Conversation -> CHAT\nOutput nothing else."},
                  {"role": "user", "content": text}
              ])
-             return resp['message']['content'].strip().upper()
+             intent = resp['message']['content'].strip().upper()
+             # Clean up potential punctuation
+             intent = re.sub(r"[^A-Z]", "", intent)
+             
+             if intent in ["SEARCH", "READ", "CHAT"]:
+                 return intent
+             return "CHAT"
          except:
              return "CHAT"
 
@@ -402,37 +407,100 @@ class NewsAgent:
                 
         if not claims: return "No verifiable claims found."
         
-        # 3. Verify (Async)
+        # 3. Verify (Async with Streaming)
         console.print(f"[dim]Verifying {len(claims)} claims...[/dim]")
         
-        results_table = Table(title="[bold]Fact-Check Results[/bold]", show_header=True, expand=True)
-        results_table.add_column("#", width=3)
-        results_table.add_column("Claim", max_width=50)
-        results_table.add_column("Sources", width=5)
-        results_table.add_column("Top Source")
+        results_table = Table(title="[bold]Fact-Check Results[/bold]", show_header=True, expand=True, box=ROUNDED)
+        results_table.add_column("#", width=3, style="dim")
+        results_table.add_column("Claim", ratio=2)
+        results_table.add_column("Verdict", width=12, justify="center")
+        results_table.add_column("Evidence", ratio=3, style="dim")
         
         verification_summary = []
         
-        for i, claim in enumerate(claims[:5], 1):
-             res = await verify_claim(claim)
-             source_count = res['source_count']
-             top_source = "No sources"
-             if res['sources']:
-                 top_source = f"{res['sources'][0]['title'][:40]}..."
-             
-             results_table.add_row(str(i), claim[:50]+"...", str(source_count), top_source)
-             verification_summary.append({"claim": claim, "sources": res['sources']})
-             
-        console.print(results_table)
-        
-        # 4. Summarize
-        summary_prompt = f"Based on results, summarize verification status for article: {title}\n"
+        # Initialize table with pending rows
+        for i, claim in enumerate(claims, 1):
+            results_table.add_row(str(i), claim, "[yellow]Checking...[/yellow]", "")
+
+        with Live(results_table, refresh_per_second=4, console=console) as live:
+            for i, claim in enumerate(claims, 1):
+                # Update status to working
+                # (Rich tables are append-only mostly, so we rebuild rows or use a layout, 
+                # but rebuilding rows in loop is easier for this simple case if we clear and re-add)
+                
+                # Actually, simpler to just update row by row? 
+                # Rich Tables don't support easy row updates. We have to re-generate the table rows 
+                # or use a different layout. 
+                # Optimization: Just append rows as they finish?
+                # User wants "Streaming". Let's clear and re-add rows or use a list of results.
+                
+                # Better approach for Live Table: Maintain a list of row data and re-render table on update.
+                
+                # Verify
+                res = await verify_claim(claim)
+                
+                # LLM Adjudication
+                verdict = "Unverified"
+                evidence_snippet = "No conclusive evidence found."
+                color = "white"
+                
+                if res['best_evidence']:
+                    evidence_snippet = "Reading detailed fact-check..."
+                    # Ask LLM for verdict
+                    judge_prompt = f"""Review this fact-check article content and determining if the claim "{claim}" is TRUE, FALSE, or MISLEADING.
+                    
+                    Article:
+                    {res['best_evidence']}
+                    
+                    Return format: VERDICT::[True/False/Misleading/Unverified] REASON::[1 sentence summary]"""
+                    
+                    try:
+                        resp = await self.client.chat(model=self.model, messages=[{"role": "user", "content": judge_prompt}])
+                        judge_out = resp['message']['content']
+                        
+                        if "VERDICT::True" in judge_out: 
+                            verdict = "TRUE"
+                            color = "green"
+                        elif "VERDICT::False" in judge_out: 
+                            verdict = "FALSE"
+                            color = "red"
+                        elif "VERDICT::Misleading" in judge_out: 
+                             verdict = "MISLEADING"
+                             color = "yellow"
+                        
+                        if "REASON::" in judge_out:
+                            evidence_snippet = judge_out.split("REASON::")[1].strip()
+                    except:
+                        pass
+                elif res['sources']:
+                     # Fallback to snippet analysis
+                     top_src = res['sources'][0]
+                     evidence_snippet = f"Source: {top_src['title']}"
+                
+                verification_summary.append({"claim": claim, "verdict": verdict, "reason": evidence_snippet})
+                
+                # Re-render table
+                new_table = Table(title="[bold]Fact-Check Results[/bold]", show_header=True, expand=True, box=ROUNDED)
+                new_table.add_column("#", width=3, style="dim")
+                new_table.add_column("Claim", ratio=2)
+                new_table.add_column("Verdict", width=12, justify="center")
+                new_table.add_column("Evidence", ratio=3, style="dim")
+                
+                # Add completed rows
+                for idx, item in enumerate(verification_summary, 1):
+                     v_color = "green" if item['verdict'] == "TRUE" else "red" if item['verdict'] == "FALSE" else "yellow"
+                     new_table.add_row(str(idx), item['claim'], f"[{v_color}]{item['verdict']}[/{v_color}]", item['reason'])
+                
+                # Add pending rows
+                for p_idx in range(len(verification_summary) + 1, len(claims) + 1):
+                     new_table.add_row(str(p_idx), claims[p_idx-1], "[dim]Pending...[/dim]", "")
+                     
+                live.update(new_table)
+
+        # 4. Summarize (Generic summary based on verdicts)
+        summary_prompt = f"Summarize the fact-check results for article: {title}\n"
         for v in verification_summary:
-            summary_prompt += f"Claim: {v['claim']}\n"
-            if v['sources']:
-                summary_prompt += f" Sources: {v['sources'][0]['snippet'][:100]}\n"
-            else:
-                summary_prompt += " No confirmation.\n"
-        
+            summary_prompt += f"- {v['claim']}: {v['verdict']} ({v['reason']})\n"
+            
         self.history.append({"role": "user", "content": summary_prompt})
         return await self._chat_with_llm()

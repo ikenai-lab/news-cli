@@ -29,10 +29,10 @@ async def async_main(model: str, limit: int):
     agent = NewsAgent(model=model, article_limit=limit)
     
     categories = [
-        (f"{country}", f"top {country} news"),
-        ("Global", "top world news"),
-        ("Tech", f"{country} technology news"),
-        ("Sports", f"{country} sports news")
+        (f"{country}", f"latest {country} news headlines today"),
+        ("Global", "latest world news headlines today"),
+        ("Tech", f"latest technology news {country} today"),
+        ("Sports", f"latest sports news {country} today")
     ]
     
     # Initial load

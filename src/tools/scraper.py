@@ -91,19 +91,51 @@ async def fetch_direct(url: str) -> str:
         console.print(f"[dim]Direct fetch failed: {e}[/dim]")
     return None
 
+def _is_blocked(text: str) -> bool:
+    """Checks for common anti-bot blocking messages."""
+    text_lower = text.lower()
+    block_phrases = [
+        "cloudflare", "attention required", "access denied", 
+        "security service", "challenge-platform", "enable cookies",
+        "captcha", "human verification", "ray id"
+    ]
+    if len(text) < 500: # Short content + block phrase = likely block
+         if any(p in text_lower for p in block_phrases):
+             return True
+             
+    # Sometimes trafilatura extracts JUST the error message
+    if "security service to protect itself from online attacks" in text_lower:
+        return True
+        
+    return False
+
 def _extract_content(html_content: str) -> str:
     """Helper to extract markdown from HTML using Trafilatura or Readability."""
+    if not html_content: return None
+    
+    # Pre-check HTML for obvious blocks before extraction (optimization)
+    if "cf-challenge" in html_content or "Cloudflare Ray ID" in html_content:
+        # Check if it's main content or just footer? 
+        # Usually blocking page is small.
+        if len(html_content) < 5000: # arbitrary small-ish size for full HTML
+             pass # Let's be careful, might be false positive. 
+             # Safe to rely on extracted text check?
+    
     try:
         result = trafilatura.extract(html_content, output_format="markdown", include_tables=True)
         if result and len(result) > 100:
-            return result
+            if not _is_blocked(result):
+                return result
+            else:
+                pass # Console log? console.print("[dim]Detected anti-bot block in content.[/dim]")
             
         doc = Document(html_content)
         summary = doc.summary()
         text = re.sub(r'<[^>]+>', '\n', summary)
         text = re.sub(r'\n\s*\n', '\n\n', text).strip()
         if len(text) > 100:
-            return text
+            if not _is_blocked(text):
+                return text
     except Exception:
         pass
     return None
