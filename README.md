@@ -1,4 +1,4 @@
-# 📰 News CLI
+# News CLI: AI-Powered Terminal News Assistant
 
 An AI-powered terminal news assistant that lets you search for news, read articles, fact-check claims, and have intelligent conversations—all from your command line.
 
@@ -8,7 +8,7 @@ An AI-powered terminal news assistant that lets you search for news, read articl
 
 ![News CLI Demo](demo.gif)
 
-## ✨ Features
+## Features
 
 ### Core Features
 - **🔍 Smart News Search** — Natural language search with automatic date parsing ("last year AI news" → searches 2024)
@@ -25,13 +25,13 @@ An AI-powered terminal news assistant that lets you search for news, read articl
 - **🌍 Location-Aware** — Automatic country detection for localized news
 - **📝 Typo Correction** — LLM-powered input sanitization
 
-## 📋 Prerequisites
+## Prerequisites
 
 - **Python 3.13+**
 - **[Ollama](https://ollama.com/download)** — Local LLM runtime
 - **[uv](https://docs.astral.sh/uv/)** — Fast Python package manager (recommended)
 
-## 🚀 Installation
+## Installation
 
 ### Quick Install (Recommended)
 
@@ -81,7 +81,7 @@ uv run playwright install chromium
 ollama pull llama3.2:3b
 ```
 
-## 🎯 Usage
+## Usage
 
 ```bash
 # Run with defaults
@@ -114,7 +114,7 @@ news-cli config --model llama3.2:3b
 news-cli config --limit 10
 ```
 
-## ⌨️ Commands
+## Commands
 
 Type `/` to see all available commands with autocomplete.
 
@@ -142,7 +142,7 @@ Just type naturally! The AI understands:
 - `"give me article 3"` → Reads article #3
 - `"read 1"` → Reads first article in list
 
-## 🌅 Morning Briefing
+## Morning Briefing
 
 On startup, you'll see a personalized dashboard:
 
@@ -158,7 +158,7 @@ On startup, you'll see a personalized dashboard:
 📰 12 articles loaded. Use /read <#> to read any article.
 ```
 
-## 🔍 Fact-Checking
+## Fact-Checking
 
 Verify claims in any article:
 
@@ -172,7 +172,7 @@ Verify claims in any article:
 ...
 ```
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 news-cli/
@@ -191,7 +191,7 @@ news-cli/
 └── README.md
 ```
 
-## 📦 Dependencies
+## Dependencies
 
 | Package | Purpose |
 |---------|---------|
@@ -206,7 +206,7 @@ news-cli/
 | `httpx` | HTTP client |
 | `prompt-toolkit` | Command autocomplete |
 
-## 🔧 Scraping Architecture
+## Scraping Architecture
 
 The scraper uses a multi-layered approach with 6 fallback methods:
 
@@ -229,10 +229,10 @@ The scraper uses a multi-layered approach with 6 fallback methods:
 
 For sites that block all scraping (like MSN), use `/open <id>` to view in browser.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
