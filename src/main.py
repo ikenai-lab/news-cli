@@ -11,7 +11,8 @@ from src.ui.completer import SlashCommandCompleter
 
 app = typer.Typer()
 console = Console()
-from src.config import config
+console = Console()
+from src.config import config as app_config
 
 async def async_main(model: str, limit: int):
     """
@@ -145,21 +146,24 @@ def config(
             border_style="blue"
         ))
 
+@app.callback(invoke_without_command=True)
 def main(
-    model: str = typer.Option(config.default_model, help="Ollama model to use for the agent"),
-    limit: int = typer.Option(config.default_limit, min=1, max=20, help="Number of articles per search (1-20)")
+    ctx: typer.Context,
+    model: str = typer.Option(app_config.default_model, help="Ollama model to use for the agent"),
+    limit: int = typer.Option(app_config.default_limit, min=1, max=20, help="Number of articles per search (1-20)")
 ):
     """
     Antigravity News CLI - Your AI-powered news assistant.
     """
-    try:
-        asyncio.run(async_main(model, limit))
-    except KeyboardInterrupt:
-        pass
+    if ctx.invoked_subcommand is None:
+        try:
+            asyncio.run(async_main(model, limit))
+        except KeyboardInterrupt:
+            pass
 
 def entry_point():
     """ Wrapper to invoke typer properly"""
-    typer.run(main)
+    app()
 
 if __name__ == "__main__":
     entry_point()
