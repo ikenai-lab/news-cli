@@ -19,7 +19,8 @@ An AI-powered terminal news assistant that lets you search for news, read articl
 
 ### User Experience
 - **📊 Morning Briefing** — Geo-located dashboard with top news on startup
-- **⌨️ Autocomplete** — Tab completion for all slash commands
+- **🔢 Sequential IDs** — Simple numeric IDs (1, 2, 3) for easy command typing
+- **⌨️ Autocomplete** — Tab completion for commands with smart defaults
 - **🔧 Configurable** — Adjust article limits, choose your LLM model
 - **🌍 Location-Aware** — Automatic country detection for localized news
 - **📝 Typo Correction** — LLM-powered input sanitization
@@ -105,14 +106,13 @@ Type `/` to see all available commands with autocomplete.
 
 | Command | Description |
 |---------|-------------|
-| `/read <id>` | Read and summarize article #id |
-| `/open <id>` | Open article in browser (for blocked sites) |
-| `/save <id>` | Save article to markdown file |
-| `/save <filename>` | Save conversation history |
+| `/read <id>` | Read and summarize article (e.g. `/read 1`) |
+| `/open <id>` | Open article in browser (e.g. `/open 1`) |
+| `/save-article <id>` | Save article content to markdown file |
+| `/save-session <file>` | Save conversation history to JSON file |
 | `/analyze <id>` | AI analysis for bias, tone, facts |
 | `/fact-check <id>` | Verify claims against fact-check sites |
 | `/similar <id>` | Find related news from different sources |
-| `/more-source <id>` | Find same story from other publishers |
 | `/limit <n>` | Set articles per search (1-20) |
 | `/briefing` | Refresh the morning briefing |
 | `/quit` or `/exit` | Exit the application |
@@ -124,6 +124,7 @@ Just type naturally! The AI understands:
 - `"what happened with OpenAI last week"` → Search with date filter
 - `"read the techcrunch article"` → Reads matching article
 - `"give me article 3"` → Reads article #3
+- `"read 1"` → Reads first article in list
 
 ## 🌅 Morning Briefing
 

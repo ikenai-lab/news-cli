@@ -109,10 +109,14 @@ class NewsAgent:
          table.add_column("Description", style="white")
          
          table.add_row("/read", "/read <id>", "Read full content of article #ID")
+         table.add_row("/open", "/open <id>", "Open article in browser")
          table.add_row("/save-article", "/save-article <id>", "Save article content to file")
          table.add_row("/save-session", "/save-session <file>", "Save current chat history")
          table.add_row("/analyze", "/analyze <id>", "AI analysis (bias, facts, tone)")
+         table.add_row("/fact-check", "/fact-check <id>", "Verify claims against fact-check sites")
          table.add_row("/similar", "/similar <id>", "Search for related news")
+         table.add_row("/limit", "/limit <n>", "Set articles per search (1-20)")
+         table.add_row("/briefing", "/briefing", "Refresh morning briefing")
          table.add_row("/quit", "/quit", "Exit application")
          console.print(table)
 
