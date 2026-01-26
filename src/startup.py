@@ -8,6 +8,7 @@ import httpx
 import ollama
 from rich.console import Console
 from rich.panel import Panel
+from src.config import config
 
 console = Console()
 
@@ -25,11 +26,13 @@ def get_user_country() -> str:
         console.print(f"[dim]Geo-location failed: {e}[/dim]")
         return "Global"
 
-def check_and_start_ollama(target_model : str = "llama3.2:3b") -> bool:
+def check_and_start_ollama(target_model : str = None) -> bool:
     """
     Ensures Ollama is installed, running, and the required model is available.
     Returns True if ready, exits or returns False otherwise.
     """
+    if target_model is None:
+        target_model = config.default_model
     if shutil.which("ollama") is None:
         console.print(Panel("Error: 'ollama' binary not found in PATH.\nPlease install Ollama from https://ollama.com/download", title="Ollama Missing", style="bold red"))
         sys.exit(1)

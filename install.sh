@@ -79,11 +79,19 @@ main() {
     echo ""
     echo "📂 Cloning repository..."
     
-    # Clone the repository
+    # Clone or Update repository
     if [ -d "news-cli" ]; then
         echo "Directory 'news-cli' already exists. Updating..."
         cd news-cli
-        git pull
+        
+        # Stash local changes if any to prevent conflicts
+        if [[ -n $(git status -s) ]]; then
+            echo "Stashing local changes..."
+            git stash
+        fi
+        
+        git checkout main
+        git pull origin main
     else
         git clone https://github.com/ikenai-lab/news-cli.git
         cd news-cli
@@ -102,14 +110,13 @@ main() {
     ollama pull llama3.2:3b
     
     echo ""
+    echo "📦 Installing/Updating global command..."
+    uv tool install . --force
+    
+    echo ""
     echo -e "${GREEN}✅ Installation complete!${NC}"
     echo ""
     echo "To run News CLI:"
-    echo "  cd news-cli"
-    echo "  uv run news-cli"
-    echo ""
-    echo "Or add to your PATH:"
-    echo "  export PATH=\"\$PWD/.venv/bin:\$PATH\""
     echo "  news-cli"
 }
 

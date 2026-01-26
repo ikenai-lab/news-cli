@@ -11,6 +11,7 @@ from src.ui.completer import SlashCommandCompleter
 
 app = typer.Typer()
 console = Console()
+from src.config import config
 
 async def async_main(model: str, limit: int):
     """
@@ -108,9 +109,45 @@ async def async_main(model: str, limit: int):
         except Exception as e:
             console.print(f"[red]An error occurred: {e}[/red]")
 
+@app.command()
+def config(
+    model: str = typer.Option(None, help="Set default Ollama model"),
+    limit: int = typer.Option(None, min=1, max=20, help="Set default article limit")
+):
+    """
+    View or update default configuration.
+    """
+    from src.config import config
+    from rich.panel import Panel
+    
+    # Update if provided
+    if model:
+        try:
+            config.set("default_model", model)
+            console.print(f"[green]✓ Default model updated to: {model}[/green]")
+        except Exception as e:
+            console.print(f"[red]Error setting model: {e}[/red]")
+            
+    if limit:
+        try:
+            config.set("default_limit", limit)
+            console.print(f"[green]✓ Default limit updated to: {limit}[/green]")
+        except Exception as e:
+            console.print(f"[red]Error setting limit: {e}[/red]")
+            
+    # Show current config if no updates
+    if not model and not limit:
+        console.print(Panel(
+            f"Model: [cyan]{config.default_model}[/cyan]\n"
+            f"Limit: [cyan]{config.default_limit}[/cyan]\n\n"
+            f"[dim]Config file: {config._get_config_path()}[/dim]",
+            title="Current Configuration",
+            border_style="blue"
+        ))
+
 def main(
-    model: str = typer.Option("llama3.2:3b", help="Ollama model to use for the agent"),
-    limit: int = typer.Option(5, min=1, max=20, help="Number of articles per search (1-20)")
+    model: str = typer.Option(config.default_model, help="Ollama model to use for the agent"),
+    limit: int = typer.Option(config.default_limit, min=1, max=20, help="Number of articles per search (1-20)")
 ):
     """
     Antigravity News CLI - Your AI-powered news assistant.

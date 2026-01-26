@@ -11,6 +11,7 @@ from rich.panel import Panel
 from datetime import datetime
 import webbrowser
 from rich.box import ROUNDED
+from src.config import config
 from src.tools.search import search_news
 from src.tools.scraper import scrape_article
 from src.tools.fact_check import verify_claim, extract_claims_prompt
@@ -19,9 +20,9 @@ from src.ui.render import print_search_results, print_article, print_error
 console = Console()
 
 class NewsAgent:
-    def __init__(self, model: str = "llama3.2:3b", article_limit: int = 5):
-        self.model = model
-        self.article_limit = article_limit
+    def __init__(self, model: str = None, article_limit: int = None):
+        self.model = model or config.default_model
+        self.article_limit = article_limit or config.default_limit
         self.client = ollama.AsyncClient()
         self.history = [
             {"role": "system", "content": "You are a helpful news assistant. You have access to search tools. When provided with search results or article content, summarize them concisely for the user. If the user asks to read a specific item by ID, assume the content will be provided to you."}
