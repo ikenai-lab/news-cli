@@ -185,7 +185,7 @@ class NewsAgent:
             search_query = user_text
             timelimit = None
         else:
-            search_query, timelimit = await self._extract_date_context(user_text)
+            search_query, timelimit = await self._refine_search_query(user_text)
             
         console.print(f"[blue]Searching for: {search_query}[/blue]")
         if timelimit: console.print(f"[dim]Time filter: {timelimit}[/dim]")
@@ -222,25 +222,46 @@ class NewsAgent:
         
         return await self._chat_with_llm()
 
-    async def _extract_date_context(self, query: str) -> tuple[str, str | None]:
+    async def _refine_search_query(self, query: str) -> tuple[str, str | None]:
         current_date = datetime.now().strftime("%Y-%m-%d")
         
-        prompt = f"""Today is {current_date}. Query: "{query}". 
-        Does it need time filter (d/w/m/y)? 
-        Return format: TIMELIMIT: [d/w/m/y/NONE]\nQUERY: [cleaned]"""
+        # Get last 2 turns of history for context
+        context_history = ""
+        if len(self.history) >= 2:
+             # Skip system prompt
+             recent = self.history[-2:]
+             context_history = "Previous conversation:\n"
+             for msg in recent:
+                 role = "User" if msg['role'] == "user" else "Agent"
+                 # Truncate content for token efficiency
+                 content = msg['content'][:500].replace("\n", " ") 
+                 context_history += f"{role}: {content}\n"
+        
+        prompt = f"""Today is {current_date}. 
+        User Query: "{query}"
+        {context_history}
+        
+        Task: Refine the query for a search engine. if the query refers to previous context (e.g. "it", "this", "the same"), rewrite it using the context.
+        Also check if it needs a time filter (d/w/m/y).
+        
+        Return format: 
+        TIMELIMIT: [d/w/m/y/NONE]
+        QUERY: [refined search query]"""
         
         try:
             resp = await self.client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
             answer = resp['message']['content'].strip()
-            # ... parsing logic ...
+            
             timelimit = None
             cleaned_query = query
+            
             for line in answer.split('\n'):
                 if "TIMELIMIT:" in line:
                     tl = line.split(":", 1)[1].strip().lower()
                     if tl in ['d', 'w', 'm', 'y']: timelimit = tl
                 elif "QUERY:" in line:
                     cleaned_query = line.split(":", 1)[1].strip()
+                    
             return (cleaned_query, timelimit)
         except:
              return (query, None)

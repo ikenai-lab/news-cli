@@ -98,6 +98,22 @@ uv run news-cli --model llama3.2:3b --limit 10
 | `--model` | `llama3.2:3b` | Ollama model to use |
 | `--limit` | `5` | Articles per search (1-20) |
 
+
+### Configuration
+
+You can set persistent defaults (saved to `~/.config/news-cli/config.json`) so you don't need to specify options every time.
+
+```bash
+# View current config
+news-cli config
+
+# Set default model
+news-cli config --model llama3.2:3b
+
+# Set default article limit
+news-cli config --limit 10
+```
+
 ## ⌨️ Commands
 
 Type `/` to see all available commands with autocomplete.
@@ -181,7 +197,7 @@ news-cli/
 |---------|---------|
 | `ollama` | Local LLM client |
 | `ddgs` | DuckDuckGo search |
-| `crawl4ai` | Stealth browser scraping with anti-bot bypass |
+| `nodriver` | Stealth browser automation (replacing Selenium/Playwright) |
 | `cloudscraper` | Cloudflare bypass |
 | `trafilatura` | Article content extraction |
 | `readability-lxml` | Fallback content extraction |
@@ -196,24 +212,18 @@ The scraper uses a multi-layered approach with 6 fallback methods:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 1. Crawl4AI (Stealth Browser)                           │
-│    ↳ Uses playwright-stealth, anti-bot bypass           │
-│    ↳ Returns clean markdown with PruningContentFilter   │
+│ 1. Cloudscraper                                         │
+│    ↳ Fast, lightweight Cloudflare bypass                │
 │    ↓ (if fails)                                         │
-│ 2. Cloudscraper                                         │
-│    ↳ Cloudflare bypass, drop-in requests replacement    │
+│ 2. Nodriver (Stealth Browser)                           │
+│    ↳ Chrome DevTools Protocol based (masked as User)    │
+│    ↳ Handles heavy JS and complex anti-bots             │
 │    ↓ (if fails)                                         │
-│ 3. Jina Reader (r.jina.ai)                              │
-│    ↳ Free proxy, returns markdown, hides your IP       │
-│    ↓ (if fails)                                         │
-│ 4. Archive.org (Wayback Machine)                        │
-│    ↳ Cached versions for blocked sites                  │
-│    ↓ (if fails)                                         │
-│ 5. Direct Fetch (httpx + trafilatura)                   │
+│ 3. Direct Fetch (httpx + trafilatura)                   │
 │    ↳ Standard HTTP with article extraction              │
 │    ↓ (if fails)                                         │
-│ 6. Google Cache                                         │
-│    ↳ Last resort cached version                         │
+│ 4. Archive.org (Wayback Machine)                        │
+│    ↳ Check for cached snapshots if live site fails      │
 └─────────────────────────────────────────────────────────┘
 ```
 
