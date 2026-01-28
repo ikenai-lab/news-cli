@@ -22,6 +22,7 @@ async def search_news(query: str, max_results: int = 5, timelimit: str | None = 
     Returns a list of dictionaries with keys: id, title, href, body, date, source.
     """
     seen_urls = set()
+    results = []
     try:
         # 1. Try news search
         news_results = await asyncio.to_thread(_search_news_sync, query, max_results * 2, timelimit) # Fetch more to allow for filtering
@@ -74,5 +75,24 @@ async def search_news(query: str, max_results: int = 5, timelimit: str | None = 
             print(f"Text search error: {e}")
             
     return results[:max_results]
+
+async def search_web(query: str, max_results: int = 5) -> list[dict]:
+    """
+    Performs a general web search for facts/context (not specifically news).
+    Returns a list of dictionaries with keys: title, url, snippet.
+    """
+    results = []
+    try:
+        raw_results = await asyncio.to_thread(_search_text_sync, query, max_results, None)
+        
+        for result in raw_results:
+            results.append({
+                "title": result.get("title", ""),
+                "url": result.get("href", ""),
+                "snippet": result.get("body", "")
+            })
             
-    return results
+    except Exception as e:
+        print(f"Web search error: {e}")
+        
+    return results[:max_results]
