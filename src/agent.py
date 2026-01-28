@@ -12,7 +12,7 @@ from datetime import datetime
 import webbrowser
 from rich.box import ROUNDED
 from src.config import config
-from src.tools.search import search_news
+from src.tools.search import search_news, search_web
 from src.tools.scraper import scrape_article
 from src.tools.fact_check import verify_claim, extract_claims_prompt
 from src.ui.render import print_search_results, print_article, print_error
@@ -30,9 +30,10 @@ class NewsAgent:
                 "content": (
                     "You are a helpful and professional news assistant. Your primary goal is to provide 'Balanced Context' summaries: "
                     "a single concise sentence stating the main claim, followed by exactly 2-3 bullet points of supporting details. "
-                    "If you lack sufficient information to answer a question from the loaded context, "
-                    "you must explicitly ask: 'I don't have that information in my current context. Should I search the web for [topic]?'. "
-                    "If a search is performed, use the results to provide a comprehensive yet concise answer. "
+                    "If you lack sufficient information to answer a question from the loaded context or your internal knowledge, "
+                    "you MUST trigger a web search by outputting exactly: SEARCH_WEB: [specific search query]. "
+                    "I will then provide you with the web search results and content from the top sources. "
+                    "If a search is performed, use that information to provide a comprehensive yet concise answer. "
                     "If the user asks to read a specific item by ID, assume the content will be provided to you."
                 )
             }
@@ -309,11 +310,42 @@ class NewsAgent:
                     live.update(Markdown(full_response))
             
             console.print()
+            
+            # Check for SEARCH_WEB trigger
+            search_match = re.search(r"SEARCH_WEB:\s*(.*)", full_response)
+            if search_match:
+                query = search_match.group(1).strip()
+                return await self._handle_web_search_fallback(query)
+
             self.history.append({"role": "assistant", "content": full_response})
             self._prune_history()
             return full_response
         except Exception as e:
             return f"Error: {e}"
+
+    async def _handle_web_search_fallback(self, query: str) -> str:
+        console.print(f"[blue]Performing fallback web search for: {query}...[/blue]")
+        results = await search_web(query, max_results=3)
+        
+        if not results:
+            self.history.append({"role": "user", "content": "I couldn't find any relevant web search results for that query."})
+            return await self._chat_with_llm()
+            
+        # Proactively scrape the first result for deeper context
+        top_result = results[0]
+        console.print(f"[dim]Scraping top result for context: {top_result['url']}[/dim]")
+        scraped_content = await scrape_article(top_result['url'])
+        
+        context_msg = f"Web search results for '{query}':\n\n"
+        for i, res in enumerate(results, 1):
+            context_msg += f"{i}. {res['title']}\n   URL: {res['url']}\n   Snippet: {res['snippet']}\n\n"
+        
+        if not scraped_content.startswith("Error:"):
+            context_msg += f"Detailed content from the top result ({top_result['title']}):\n\n{scraped_content[:4000]}"
+        
+        self.history.append({"role": "user", "content": context_msg})
+        self._prune_history()
+        return await self._chat_with_llm()
 
     # Helpers
     async def _open_in_browser(self, arg: str) -> str:

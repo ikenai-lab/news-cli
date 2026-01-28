@@ -17,7 +17,7 @@ def _search_sync(query: str, max_results: int) -> list:
     except Exception:
         return []
 
-async def verify_claim(claim: str) -> dict:
+async def verify_claim(claim: str, max_sources: int = 5) -> dict:
     """
     Verifies a claim by searching for fact-checks and scraping trusted sources.
     Returns a dict with 'sources' and optional 'best_evidence' content.
@@ -61,7 +61,7 @@ async def verify_claim(claim: str) -> dict:
             
     # Combine (Trusted first)
     final_sources = trusted_results + other_results
-    final_sources = final_sources[:5] # Top 5
+    final_sources = final_sources[:max_sources] # Top N
     
     best_evidence = None
     
