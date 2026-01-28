@@ -25,7 +25,17 @@ class NewsAgent:
         self.article_limit = article_limit or config.default_limit
         self.client = ollama.AsyncClient()
         self.history = [
-            {"role": "system", "content": "You are a helpful news assistant. You have access to search tools. When provided with search results or article content, summarize them concisely for the user. If the user asks to read a specific item by ID, assume the content will be provided to you."}
+            {
+                "role": "system", 
+                "content": (
+                    "You are a helpful and professional news assistant. Your primary goal is to provide 'Balanced Context' summaries: "
+                    "a single concise sentence stating the main claim, followed by exactly 2-3 bullet points of supporting details. "
+                    "If you lack sufficient information to answer a question from the loaded context, "
+                    "you must explicitly ask: 'I don't have that information in my current context. Should I search the web for [topic]?'. "
+                    "If a search is performed, use the results to provide a comprehensive yet concise answer. "
+                    "If the user asks to read a specific item by ID, assume the content will be provided to you."
+                )
+            }
         ]
         self.search_cache = {}  # Maps ID (str) -> {url, title}
         self.id_map = {}        # Maps Seq ID (str) -> Hash ID (str)
@@ -153,7 +163,7 @@ class NewsAgent:
         
         print_article(title, article_content)
         
-        user_message = f"Please summarize this article:\n\nTitle: {title}\n\n{article_content[:5000]}"
+        user_message = f"Summarize the following article using the 'Balanced Context' format (Main Claim + 2-3 supporting bullet points):\n\nTitle: {title}\n\n{article_content[:5000]}"
         self.history.append({"role": "user", "content": user_message})
         self._prune_history()
         
