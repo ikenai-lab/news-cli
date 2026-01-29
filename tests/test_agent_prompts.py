@@ -20,9 +20,6 @@ async def test_system_prompt_content(mock_agent):
     # Check for Balanced Context definition
     assert "concise sentence stating the main claim" in system_prompt
     assert "2-3 bullet points" in system_prompt
-    
-    # Check for Fallback instruction
-    assert "SEARCH_WEB: [specific search query]" in system_prompt
 
 @pytest.mark.asyncio
 async def test_summarize_prompt_structure(mock_agent):

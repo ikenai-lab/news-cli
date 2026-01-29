@@ -24,17 +24,16 @@ class NewsAgent:
         self.model = model or config.default_model
         self.article_limit = article_limit or config.default_limit
         self.client = ollama.AsyncClient()
+        
+        current_date = datetime.now().strftime("%B %d, %Y")
+        
         self.history = [
             {
                 "role": "system", 
                 "content": (
-                    "You are a helpful and professional news assistant. Your primary goal is to provide 'Balanced Context' summaries: "
-                    "a single concise sentence stating the main claim, followed by exactly 2-3 bullet points of supporting details. "
-                    "If you lack sufficient information to answer a question from the loaded context or your internal knowledge, "
-                    "you MUST trigger a web search by outputting exactly: SEARCH_WEB: [specific search query]. "
-                    "I will then provide you with the web search results and content from the top sources. "
-                    "If a search is performed, use that information to provide a comprehensive yet concise answer. "
-                    "If the user asks to read a specific item by ID, assume the content will be provided to you."
+                    f"You are a helpful and professional news assistant. Today's date is {current_date}. "
+                    "You will receive context from web searches or articles. "
+                    "ALWAYS answer based on the provided context. If the context is insufficient, state clearly what is missing."
                 )
             }
         ]
@@ -58,11 +57,16 @@ class NewsAgent:
         
         if intent == "READ":
             return await self._handle_read_intent(user_text)
-        elif intent == "SEARCH":
-            # Check for simple search vs date extraction
+        elif intent == "SEARCH_NEWS":
             return await self._handle_search_intent(user_text)
+        elif intent == "FACTUAL":
+             # Proactive RAG: Search -> Scrape -> Chat
+             context_msg = await self._gather_context(user_text)
+             self.history.append({"role": "user", "content": context_msg})
+             self._prune_history()
+             return await self._chat_with_llm()
         else:
-            # Add to history and chat
+            # CHAT
             self.history.append({"role": "user", "content": user_text})
             self._prune_history()
             return await self._chat_with_llm()
@@ -71,6 +75,196 @@ class NewsAgent:
         """Keeps system prompt + last 6 messages (3 turns)."""
         if len(self.history) > 7:
              self.history = [self.history[0]] + self.history[-6:]
+
+    async def _gather_context(self, query: str) -> str:
+        """
+        Proactively searches the web and scrapes the top result to provide context.
+        """
+        refined_query, _ = await self._refine_search_query(query, intent="FACTUAL")
+        console.print(f"[blue]Gathering context for: {refined_query}...[/blue]")
+        results = await search_web(refined_query, max_results=5) # Fetch more to have buffer for filtering
+        
+        if not results:
+            return f"User asked: '{refined_query}'.\nNote: I performed a web search but found no relevant results. Answer to the best of your ability."
+            
+        # Filter generic homepages and low-quality domains
+        blacklist = ['msn.com', 'bing.com', 'google.com', 'yahoo.com', 'weather.com', 'accuweather.com']
+        valid_results = [r for r in results if not any(x in r['url'] for x in blacklist)]
+        
+        if not valid_results: 
+             return f"User asked: '{refined_query}'.\nNote: I performed a web search but only found generic pages (e.g. MSN/Yahoo) which are likely irrelevant. Answer to the best of your ability."
+        
+        top_result = valid_results[0]
+        console.print(f"[dim]Scraping top result: {top_result['url']}[/dim]")
+        scraped_content = await scrape_article(top_result['url'])
+        
+        context_msg = f"User asked: '{refined_query}'.\n\nExternal Context (Web Search):\n"
+        for i, res in enumerate(valid_results[:3], 1):
+            context_msg += f"{i}. {res['title']}\n   Snippet: {res['snippet']}\n"
+            
+        if not scraped_content.startswith("Error"):
+             context_msg += f"\nDetailed Content from {top_result['title']}:\n{scraped_content[:4000]}"
+             
+        context_msg += "\n\nTask: Answer the user's question using this context."
+        return context_msg
+
+    async def _classify_intent(self, text: str) -> str:
+         # 1. Regex Heuristics
+         lower = text.lower()
+         if any(k in lower for k in ["news", "headlines", "latest"]): return "SEARCH_NEWS"
+         if any(k in lower for k in ["who is", "what is", "when is", "where is", "how much", "ceo of", "price of"]): return "FACTUAL"
+         
+         # 2. LLM Classifier
+         try:
+             resp = await self.client.chat(model=self.model, messages=[
+                 {"role": "system", "content": "Classify. Output ONLY: 'SEARCH_NEWS' (broad news topics), 'FACTUAL' (specific questions asking for facts/people/dates), 'READ' (specific article ID), or 'CHAT' (conversation/greeting)."},
+                 {"role": "user", "content": text}
+             ])
+             content = resp['message']['content'].strip().upper()
+             if "NEWS" in content: return "SEARCH_NEWS"
+             if "FACTUAL" in content: return "FACTUAL"
+             if "READ" in content: return "READ"
+             return "CHAT"
+         except:
+             return "CHAT"
+
+    async def _handle_search_intent(self, user_text: str, skip_date_extraction: bool = False) -> str:
+        # Heuristic: Bypass refinement for broad news queries to prevent context bleeding
+        # If it looks like "latest X news" and has no pronouns, just search it.
+        lower_text = user_text.lower()
+        is_broad_news = any(k in lower_text for k in ["latest", "news", "headlines", "today"])
+        has_pronouns = any(p in lower_text.split() for p in ["he", "she", "it", "they", "this", "that", "him", "her", "them"])
+        
+        if is_broad_news and not has_pronouns and not skip_date_extraction:
+             search_query = user_text
+             timelimit = 'd' if "today" in lower_text else None 
+             console.print("[dim]Broad news query detected, skipping AI refinement...[/dim]")
+        elif skip_date_extraction:
+            search_query = user_text
+            timelimit = None
+        else:
+            search_query, timelimit = await self._refine_search_query(user_text, intent="SEARCH_NEWS")
+            
+        console.print(f"[blue]Searching news for: {search_query}[/blue]")
+        if timelimit: console.print(f"[dim]Time filter: {timelimit}[/dim]")
+        
+        results = await search_news(search_query, max_results=self.article_limit, timelimit=timelimit)
+        
+        if not results: 
+            console.print("[dim]No news results found, attempting general web search...[/dim]")
+            return await self._gather_context(search_query) + "\n\nAnswer based on this context."
+        
+        # UX: Map Hash IDs to Sequential IDs (1, 2, 3...)
+        self.search_cache = {}
+        self.id_map = {}
+        display_results = []
+        
+        formatted_results = "Search results:\n"
+        for i, res in enumerate(results, 1):
+            seq_id = str(i)
+            hash_id = res['id']
+            
+            self.id_map[seq_id] = hash_id
+            self.search_cache[hash_id] = {"url": res['href'], "title": res['title']}
+            
+            # Create display copy
+            d_res = res.copy()
+            d_res['id'] = seq_id
+            display_results.append(d_res)
+            
+            formatted_results += f"ID: {seq_id} | {res['title']} ({res['date']})\n"
+            
+        print_search_results(display_results)
+        
+        user_message = (
+            f"I searched for news about '{search_query}'. Results:\n{formatted_results}\n"
+            "Summarize the key information found in these search results for the user."
+        )
+        self.history.append({"role": "user", "content": user_message})
+        self._prune_history()
+        
+        return await self._chat_with_llm()
+
+    async def _refine_search_query(self, query: str, intent: str = "FACTUAL") -> tuple[str, str | None]:
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Smart Context Curation: Filter out tool noises (SEARCH_WEB, results)
+        clean_history = []
+        for msg in reversed(self.history):
+            if len(clean_history) >= 2: break
+            content = msg['content']
+            role = msg['role']
+            if "External Context" in content: continue
+            if "Scraping article" in content: continue
+            if role == "system": continue
+            clean_history.insert(0, f"{role.capitalize()}: {content[:300]}...")
+
+        context_str = "\n".join(clean_history) if clean_history else "No previous context."
+        
+        if intent == "SEARCH_NEWS":
+            prompt = f"""Today is {current_date}. 
+        User Query: "{query}"
+        {context_str}
+        
+        Task: Refine the query for a search engine. if the query refers to previous context (e.g. "it", "this", "the same"), rewrite it using the context.
+        Also check if it needs a time filter (d/w/m/y).
+        
+        Return format: 
+        TIMELIMIT: [d/w/m/y/NONE]
+        QUERY: [refined search query]"""
+        else:
+            prompt = f"""Today is {current_date}. 
+        User Query: "{query}"
+        
+        Previous Conversation Context:
+        {context_str}
+        
+        Task: Refine the query for a search engine. 
+        Rules:
+        1. If the User Query is a follow-up, COMBINE it with the previous context.
+        2. If the User Query is a NEW topic, IGNORE the previous context.
+        3. Do NOT force connections between unrelated topics.
+        4. Check if it needs a time filter (d/w/m/y).
+        
+        Return format: 
+        TIMELIMIT: [d/w/m/y/NONE]
+        QUERY: [refined search query]"""
+        
+        try:
+            resp = await self.client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
+            answer = resp['message']['content'].strip()
+            
+            timelimit = None
+            cleaned_query = query
+            
+            for line in answer.split('\n'):
+                if "TIMELIMIT:" in line:
+                    tl = line.split(":", 1)[1].strip().lower()
+                    if tl in ['d', 'w', 'm', 'y']: timelimit = tl
+                elif "QUERY:" in line:
+                    cleaned_query = line.split(":", 1)[1].strip()
+                    
+            return (cleaned_query, timelimit)
+        except:
+             return (query, None)
+
+    async def _chat_with_llm(self) -> str:
+        try:
+            full_response = ""
+            console.print("[bold purple]Agent:[/bold purple]")
+            
+            with Live(Markdown(""), refresh_per_second=10, console=console) as live:
+                async for chunk in await self.client.chat(model=self.model, messages=self.history, stream=True):
+                    content = chunk['message']['content']
+                    full_response += content
+                    live.update(Markdown(full_response))
+            
+            console.print()
+            self.history.append({"role": "assistant", "content": full_response})
+            self._prune_history()
+            return full_response
+        except Exception as e:
+            return f"Error: {e}"
 
     async def _handle_slash_command(self, user_text: str) -> str:
         parts = user_text.strip().split()
@@ -112,7 +306,7 @@ class NewsAgent:
             return "Goodbye!"
         else:
             return f"Unknown command: {command}"
-
+            
     def _print_help(self):
          table = Table(title="[bold]Available Commands[/bold]", box=ROUNDED, show_header=True, header_style="bold magenta")
          table.add_column("Command", style="cyan", no_wrap=True)
@@ -164,7 +358,7 @@ class NewsAgent:
         
         print_article(title, article_content)
         
-        user_message = f"Summarize the following article using the 'Balanced Context' format (Main Claim + 2-3 supporting bullet points):\n\nTitle: {title}\n\n{article_content[:5000]}"
+        user_message = f"Summarize this article:\n\nTitle: {title}\n\n{article_content[:5000]}"
         self.history.append({"role": "user", "content": user_message})
         self._prune_history()
         
@@ -190,164 +384,6 @@ class NewsAgent:
         except:
              return "I couldn't identify the article."
 
-    async def _handle_search_intent(self, user_text: str, skip_date_extraction: bool = False) -> str:
-        if skip_date_extraction:
-            search_query = user_text
-            timelimit = None
-        else:
-            search_query, timelimit = await self._refine_search_query(user_text)
-            
-        console.print(f"[blue]Searching for: {search_query}[/blue]")
-        if timelimit: console.print(f"[dim]Time filter: {timelimit}[/dim]")
-        
-        results = await search_news(search_query, max_results=self.article_limit, timelimit=timelimit)
-        
-        if not results: return "I couldn't find any news."
-        
-        # UX: Map Hash IDs to Sequential IDs (1, 2, 3...)
-        self.search_cache = {}
-        self.id_map = {}
-        display_results = []
-        
-        formatted_results = "Search results:\n"
-        for i, res in enumerate(results, 1):
-            seq_id = str(i)
-            hash_id = res['id']
-            
-            self.id_map[seq_id] = hash_id
-            self.search_cache[hash_id] = {"url": res['href'], "title": res['title']}
-            
-            # Create display copy
-            d_res = res.copy()
-            d_res['id'] = seq_id
-            display_results.append(d_res)
-            
-            formatted_results += f"ID: {seq_id} | {res['title']} ({res['date']})\n"
-            
-        print_search_results(display_results)
-        
-        user_message = f"I searched for '{search_query}'. Results:\n{formatted_results}\nPresent these concisely."
-        self.history.append({"role": "user", "content": user_message})
-        self._prune_history()
-        
-        return await self._chat_with_llm()
-
-    async def _refine_search_query(self, query: str) -> tuple[str, str | None]:
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        
-        # Get last 2 turns of history for context
-        context_history = ""
-        if len(self.history) >= 2:
-             # Skip system prompt
-             recent = self.history[-2:]
-             context_history = "Previous conversation:\n"
-             for msg in recent:
-                 role = "User" if msg['role'] == "user" else "Agent"
-                 # Truncate content for token efficiency
-                 content = msg['content'][:500].replace("\n", " ") 
-                 context_history += f"{role}: {content}\n"
-        
-        prompt = f"""Today is {current_date}. 
-        User Query: "{query}"
-        {context_history}
-        
-        Task: Refine the query for a search engine. if the query refers to previous context (e.g. "it", "this", "the same"), rewrite it using the context.
-        Also check if it needs a time filter (d/w/m/y).
-        
-        Return format: 
-        TIMELIMIT: [d/w/m/y/NONE]
-        QUERY: [refined search query]"""
-        
-        try:
-            resp = await self.client.chat(model=self.model, messages=[{"role": "user", "content": prompt}])
-            answer = resp['message']['content'].strip()
-            
-            timelimit = None
-            cleaned_query = query
-            
-            for line in answer.split('\n'):
-                if "TIMELIMIT:" in line:
-                    tl = line.split(":", 1)[1].strip().lower()
-                    if tl in ['d', 'w', 'm', 'y']: timelimit = tl
-                elif "QUERY:" in line:
-                    cleaned_query = line.split(":", 1)[1].strip()
-                    
-            return (cleaned_query, timelimit)
-        except:
-             return (query, None)
-
-    async def _classify_intent(self, text: str) -> str:
-         # Use regex first?
-         if any(k in text.lower() for k in ["news", "search", "headlines", "latest"]):
-             return "SEARCH"
-         
-         # Fallback to LLM
-         try:
-             resp = await self.client.chat(model=self.model, messages=[
-                 {"role": "system", "content": "You are a classifier. Output ONLY one word: SEARCH, READ, or CHAT. Rules:\n- Requesting news/info -> SEARCH\n- Reading specific article -> READ\n- Conversation -> CHAT\nOutput nothing else."},
-                 {"role": "user", "content": text}
-             ])
-             intent = resp['message']['content'].strip().upper()
-             # Clean up potential punctuation
-             intent = re.sub(r"[^A-Z]", "", intent)
-             
-             if intent in ["SEARCH", "READ", "CHAT"]:
-                 return intent
-             return "CHAT"
-         except:
-             return "CHAT"
-
-    async def _chat_with_llm(self) -> str:
-        try:
-            full_response = ""
-            console.print("[bold purple]Agent:[/bold purple]")
-            
-            # Using rich Live for correct streaming
-            with Live(Markdown(""), refresh_per_second=10, console=console) as live:
-                async for chunk in await self.client.chat(model=self.model, messages=self.history, stream=True):
-                    content = chunk['message']['content']
-                    full_response += content
-                    live.update(Markdown(full_response))
-            
-            console.print()
-            
-            # Check for SEARCH_WEB trigger
-            search_match = re.search(r"SEARCH_WEB:\s*(.*)", full_response)
-            if search_match:
-                query = search_match.group(1).strip()
-                return await self._handle_web_search_fallback(query)
-
-            self.history.append({"role": "assistant", "content": full_response})
-            self._prune_history()
-            return full_response
-        except Exception as e:
-            return f"Error: {e}"
-
-    async def _handle_web_search_fallback(self, query: str) -> str:
-        console.print(f"[blue]Performing fallback web search for: {query}...[/blue]")
-        results = await search_web(query, max_results=3)
-        
-        if not results:
-            self.history.append({"role": "user", "content": "I couldn't find any relevant web search results for that query."})
-            return await self._chat_with_llm()
-            
-        # Proactively scrape the first result for deeper context
-        top_result = results[0]
-        console.print(f"[dim]Scraping top result for context: {top_result['url']}[/dim]")
-        scraped_content = await scrape_article(top_result['url'])
-        
-        context_msg = f"Web search results for '{query}':\n\n"
-        for i, res in enumerate(results, 1):
-            context_msg += f"{i}. {res['title']}\n   URL: {res['url']}\n   Snippet: {res['snippet']}\n\n"
-        
-        if not scraped_content.startswith("Error:"):
-            context_msg += f"Detailed content from the top result ({top_result['title']}):\n\n{scraped_content[:4000]}"
-        
-        self.history.append({"role": "user", "content": context_msg})
-        self._prune_history()
-        return await self._chat_with_llm()
-
-    # Helpers
     async def _open_in_browser(self, arg: str) -> str:
         if arg in self.id_map:
             arg = self.id_map[arg]
@@ -386,7 +422,6 @@ class NewsAgent:
             return f"Error saving file: {e}"
 
     async def _handle_save_match(self, arg: str, filename: str = None) -> str:
-        # Resolve ID if possible
         item_id = arg
         if item_id in self.id_map:
             item_id = self.id_map[item_id]
@@ -394,7 +429,6 @@ class NewsAgent:
         if item_id in self.search_cache:
             return await self._save_article(item_id, filename)
         else:
-            # Assume arg is filename for session save
             return self._save_session(arg)
 
     async def _analyze_article(self, arg: str) -> str:
@@ -415,7 +449,6 @@ class NewsAgent:
         if arg in self.id_map: arg = self.id_map[arg]
         if arg not in self.search_cache: return "Invalid ID"
         item = self.search_cache[arg]
-        # Clean title 
         clean_title = item["title"].split(" - ")[0].split(" | ")[0]
         return await self._handle_search_intent(f"news similar to {clean_title}", skip_date_extraction=True)
 
@@ -427,11 +460,9 @@ class NewsAgent:
         
         console.print(f"[blue]Fact-checking article {arg}: {title}[/blue]")
         
-        # 1. Scrape
         content = await scrape_article(item['url'])
         if content.startswith("Error:"): return content
         
-        # 2. Extract Claims (Ollama)
         console.print("[dim]Extracting claims...[/dim]")
         prompt = extract_claims_prompt(content)
         try:
@@ -439,7 +470,6 @@ class NewsAgent:
             claims_text = resp['message']['content'].strip()
         except Exception as e: return f"Error: {e}"
         
-        # Parse claims
         claims = []
         for line in claims_text.split('\n'):
             line = line.strip()
@@ -449,7 +479,6 @@ class NewsAgent:
                 
         if not claims: return "No verifiable claims found."
         
-        # 3. Verify (Async with Streaming)
         console.print(f"[dim]Verifying {len(claims)} claims...[/dim]")
         
         results_table = Table(title="[bold]Fact-Check Results[/bold]", show_header=True, expand=True, box=ROUNDED)
@@ -460,36 +489,20 @@ class NewsAgent:
         
         verification_summary = []
         
-        # Initialize table with pending rows
         for i, claim in enumerate(claims, 1):
             results_table.add_row(str(i), claim, "[yellow]Checking...[/yellow]", "")
 
         with Live(results_table, refresh_per_second=4, console=console) as live:
             for i, claim in enumerate(claims, 1):
-                # Update status to working
-                # (Rich tables are append-only mostly, so we rebuild rows or use a layout, 
-                # but rebuilding rows in loop is easier for this simple case if we clear and re-add)
-                
-                # Actually, simpler to just update row by row? 
-                # Rich Tables don't support easy row updates. We have to re-generate the table rows 
-                # or use a different layout. 
-                # Optimization: Just append rows as they finish?
-                # User wants "Streaming". Let's clear and re-add rows or use a list of results.
-                
-                # Better approach for Live Table: Maintain a list of row data and re-render table on update.
-                
-                # Verify
                 res = await verify_claim(claim)
                 
-                # LLM Adjudication
                 verdict = "Unverified"
                 evidence_snippet = "No conclusive evidence found."
                 color = "white"
                 
                 if res['best_evidence']:
                     evidence_snippet = "Reading detailed fact-check..."
-                    # Ask LLM for verdict
-                    judge_prompt = f"""Review this fact-check article content and determining if the claim "{claim}" is TRUE, FALSE, or MISLEADING.
+                    judge_prompt = f"""Review this fact-check article content and determining if the claim "{claim}" is TRUE, FALSE, or MISLEADING. 
                     
                     Article:
                     {res['best_evidence']}
@@ -515,31 +528,26 @@ class NewsAgent:
                     except:
                         pass
                 elif res['sources']:
-                     # Fallback to snippet analysis
                      top_src = res['sources'][0]
                      evidence_snippet = f"Source: {top_src['title']}"
                 
                 verification_summary.append({"claim": claim, "verdict": verdict, "reason": evidence_snippet})
                 
-                # Re-render table
                 new_table = Table(title="[bold]Fact-Check Results[/bold]", show_header=True, expand=True, box=ROUNDED)
                 new_table.add_column("#", width=3, style="dim")
                 new_table.add_column("Claim", ratio=2)
                 new_table.add_column("Verdict", width=12, justify="center")
                 new_table.add_column("Evidence", ratio=3, style="dim")
                 
-                # Add completed rows
                 for idx, item in enumerate(verification_summary, 1):
                      v_color = "green" if item['verdict'] == "TRUE" else "red" if item['verdict'] == "FALSE" else "yellow"
                      new_table.add_row(str(idx), item['claim'], f"[{v_color}]{item['verdict']}[/{v_color}]", item['reason'])
                 
-                # Add pending rows
                 for p_idx in range(len(verification_summary) + 1, len(claims) + 1):
                      new_table.add_row(str(p_idx), claims[p_idx-1], "[dim]Pending...[/dim]", "")
                      
                 live.update(new_table)
 
-        # 4. Summarize (Generic summary based on verdicts)
         summary_prompt = f"Summarize the fact-check results for article: {title}\n"
         for v in verification_summary:
             summary_prompt += f"- {v['claim']}: {v['verdict']} ({v['reason']})\n"
